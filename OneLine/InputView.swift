@@ -127,21 +127,50 @@ struct InputView: View {
     private var previewText: String {
         if let message = model.message { return message }
         if model.isDone { return "추가됨" }
-        if model.text.trimmingCharacters(in: .whitespaces).isEmpty { return "날짜와 시간을 함께 쓰면 자동으로 읽어요" }
+        if model.text.trimmingCharacters(in: .whitespaces).isEmpty { return "날짜·시간, 반복(매주 월), 기간(20일~22일)을 함께 쓸 수 있어요" }
 
         let parsed = model.parsed
-        if let start = parsed.start {
-            var text = Self.dateTimeFormatter.string(from: start)
-            if model.kind != .reminderOnly {
-                let end = parsed.end ?? start.addingTimeInterval(3600)
-                text += " – " + Self.timeFormatter.string(from: end)
+        if let recurrence = parsed.recurrence {
+            return recurrenceText(parsed, recurrence)
+        }
+        if let first = parsed.day, let last = parsed.endDay {
+            // 여러 날 일정: "11월 20일 (금) – 11월 22일 (일)"
+            let range = Self.dateFormatter.string(from: first) + " – " + Self.dateFormatter.string(from: last)
+            if let start = parsed.start {
+                return range + " · " + Self.timeFormatter.string(from: start)
             }
-            return text
+            return range + (model.kind == .reminderOnly ? " · 첫날 마감" : " 하루 종일")
+        }
+        if let start = parsed.start {
+            return Self.dateTimeFormatter.string(from: start) + endTimeText(parsed, start)
         }
         if let day = parsed.day {
             return Self.dateFormatter.string(from: day) + (model.kind == .reminderOnly ? " 마감" : " 하루 종일")
         }
         return model.kind == .reminderOnly ? "날짜 없음" : "오늘 하루 종일"
+    }
+
+    // 반복 일정: "매주 월·수·금 오후 7:00 – 8:00 · 11월 18일 (수)부터 · 12월 31일까지"
+    private func recurrenceText(_ parsed: ParsedInput, _ recurrence: Recurrence) -> String {
+        var parts = [recurrence.summary(firstDay: parsed.day)]
+        if let start = parsed.start {
+            parts[0] += " " + Self.timeFormatter.string(from: start) + endTimeText(parsed, start)
+        }
+        if let first = parsed.day {
+            parts.append(Self.dateFormatter.string(from: first) + "부터")
+        }
+        if let until = recurrence.until {
+            parts.append(Self.shortDateFormatter.string(from: until) + "까지")
+        } else if let count = recurrence.count {
+            parts.append("\(count)번")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func endTimeText(_ parsed: ParsedInput, _ start: Date) -> String {
+        guard model.kind != .reminderOnly else { return "" }
+        let end = parsed.end ?? start.addingTimeInterval(3600)
+        return " – " + Self.timeFormatter.string(from: end)
     }
 
     // 날짜 표시 형식. 순서와 글자는 한국어 규칙(locale)이 정한다
@@ -155,6 +184,7 @@ struct InputView: View {
     private static let dateTimeFormatter = formatter("MMMdEEEhmm")
     private static let dateFormatter = formatter("MMMdEEE")
     private static let timeFormatter = formatter("hmm")
+    private static let shortDateFormatter = formatter("MMMd")
 }
 
 // 엔터 / Tab / esc 키를 직접 받아야 해서, SwiftUI 기본 입력칸 대신 AppKit 입력칸을 감싸서 쓴다.

@@ -127,13 +127,21 @@ final class CalendarService {
             event.calendar = eventCalendar
             if let start = input.start {
                 event.startDate = start
-                event.endDate = input.end ?? start.addingTimeInterval(3600)   // 끝 시간이 없으면 1시간
+                var end = input.end ?? start.addingTimeInterval(3600)   // 끝 시간이 없으면 1시간
+                if let lastDay = input.endDay, let day = input.day {
+                    // 여러 날 일정이면 마지막 날의 같은 시각에 끝난다
+                    end = lastDay.addingTimeInterval(end.timeIntervalSince(day))
+                }
+                event.endDate = end
             } else {
-                // 시간이 없으면 하루 종일 일정 (날짜도 없으면 오늘)
+                // 시간이 없으면 하루 종일 일정 (날짜도 없으면 오늘). 기간이면 마지막 날까지
                 let day = input.day ?? calendar.startOfDay(for: .now)
                 event.isAllDay = true
                 event.startDate = day
-                event.endDate = day
+                event.endDate = input.endDay ?? day
+            }
+            if let recurrence = input.recurrence {
+                event.addRecurrenceRule(rule(for: recurrence))
             }
             try store.save(event, span: .thisEvent, commit: false)
         }
@@ -144,15 +152,47 @@ final class CalendarService {
             reminder.calendar = reminderList
             if let start = input.start {
                 reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: start)
-                // 일정 시각의 N분 전에 알림
-                reminder.addAlarm(EKAlarm(absoluteDate: start.addingTimeInterval(TimeInterval(-alarmMinutes * 60))))
+                // 일정 시각의 N분 전에 알림.
+                // 반복할 때는 매번 울려야 해서 "마감 N분 전"이라는 상대 시각으로 넣는다
+                let offset = TimeInterval(-alarmMinutes * 60)
+                reminder.addAlarm(input.recurrence == nil
+                    ? EKAlarm(absoluteDate: start.addingTimeInterval(offset))
+                    : EKAlarm(relativeOffset: offset))
             } else if let day = input.day {
                 reminder.dueDateComponents = calendar.dateComponents([.year, .month, .day], from: day)
+            }
+            if let recurrence = input.recurrence {
+                reminder.addRecurrenceRule(rule(for: recurrence))
             }
             try store.save(reminder, commit: false)
         }
 
         // 일정과 미리알림을 한꺼번에 확정한다 (실패하면 add()에서 둘 다 취소한다)
         try store.commit()
+    }
+
+    // 앱의 반복 규칙을 EventKit 형식으로 바꾼다
+    private func rule(for recurrence: Recurrence) -> EKRecurrenceRule {
+        let frequency: EKRecurrenceFrequency = switch recurrence.frequency {
+        case .daily: .daily
+        case .weekly: .weekly
+        case .monthly: .monthly
+        case .yearly: .yearly
+        }
+        let days = recurrence.weekdays.isEmpty ? nil : recurrence.weekdays
+            .compactMap { EKWeekday(rawValue: $0) }
+            .map { EKRecurrenceDayOfWeek($0) }
+        let end: EKRecurrenceEnd? = if let until = recurrence.until {
+            EKRecurrenceEnd(end: until)
+        } else if let count = recurrence.count {
+            EKRecurrenceEnd(occurrenceCount: count)
+        } else {
+            nil
+        }
+        return EKRecurrenceRule(
+            recurrenceWith: frequency, interval: recurrence.interval,
+            daysOfTheWeek: days, daysOfTheMonth: nil, monthsOfTheYear: nil,
+            weeksOfTheYear: nil, daysOfTheYear: nil, setPositions: nil, end: end
+        )
     }
 }
