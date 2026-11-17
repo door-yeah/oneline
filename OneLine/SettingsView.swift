@@ -1,4 +1,5 @@
 import EventKit
+import ServiceManagement
 import SwiftUI
 
 // 설정 창: 어느 캘린더 / 목록에 넣을지, 몇 분 전에 알릴지
@@ -9,6 +10,8 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.eventCalendarID) private var eventCalendarID = ""
     @AppStorage(SettingsKey.reminderListID) private var reminderListID = ""
     @AppStorage(SettingsKey.alarmMinutes) private var alarmMinutes = 10
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var launchError: String?
 
     var body: some View {
         Form {
@@ -47,6 +50,18 @@ struct SettingsView: View {
                 }
             }
 
+            Section("실행") {
+                Toggle("로그인할 때 자동으로 켜기", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, isOn in
+                        setLaunchAtLogin(isOn)
+                    }
+                if let launchError {
+                    Text(launchError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section("단축키") {
                 LabeledContent("입력창 열기", value: shortcutLabel.isEmpty ? "등록 실패 — 메뉴 막대 아이콘을 눌러 주세요" : shortcutLabel)
             }
@@ -54,6 +69,22 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    // 로그인 항목에 등록하거나 뺀다. 실패하면 스위치를 실제 상태로 되돌린다
+    private func setLaunchAtLogin(_ isOn: Bool) {
+        do {
+            if isOn {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchError = nil
+        } catch {
+            launchError = "자동 실행 설정을 바꾸지 못했어요: \(error.localizedDescription)"
+        }
+        let actual = SMAppService.mainApp.status == .enabled
+        if launchAtLogin != actual { launchAtLogin = actual }
     }
 
     private func accessWarning(_ name: String) -> some View {

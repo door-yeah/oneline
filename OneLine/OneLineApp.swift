@@ -1,4 +1,5 @@
 import Carbon.HIToolbox
+import ServiceManagement
 import SwiftUI
 
 // 앱의 시작점. 메뉴 막대에 아이콘만 띄운다 (Dock에는 안 보인다).
@@ -29,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         registerHotKey()
+
+        // 처음 한 번은 로그인할 때 자동으로 켜지게 등록한다. 끄고 싶으면 설정에서 끈다
+        if !UserDefaults.standard.bool(forKey: SettingsKey.didSetupLaunchAtLogin) {
+            UserDefaults.standard.set(true, forKey: SettingsKey.didSetupLaunchAtLogin)
+            try? SMAppService.mainApp.register()
+        }
 
         Task {
             await CalendarService.shared.requestAccess()

@@ -7,6 +7,7 @@ enum SettingsKey {
     static let reminderListID = "reminderListID"     // 미리알림을 넣을 목록
     static let alarmMinutes = "alarmMinutes"         // 몇 분 전에 알릴지
     static let didSetup = "didSetup"                 // 첫 실행 설정을 마쳤는지
+    static let didSetupLaunchAtLogin = "didSetupLaunchAtLogin"  // 자동 실행을 처음 한 번 켰는지
 }
 
 enum CalendarError: LocalizedError {
