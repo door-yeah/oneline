@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             await CalendarService.shared.requestAccess()
+            // 권한을 받은 뒤부터 위젯에 보낼 일정을 써 둔다
+            WidgetSync.shared.start()
             // 처음 실행했을 때만 설정 창을 띄워서 캘린더를 고르게 한다
             if !UserDefaults.standard.bool(forKey: SettingsKey.didSetup) {
                 UserDefaults.standard.set(true, forKey: SettingsKey.didSetup)
@@ -63,6 +65,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         panelController.shortcutLabel = shortcutLabel
+    }
+
+    // 위젯을 누르면 oneline:// 주소로 이 앱이 열린다
+    // oneline://new → 입력창, 그 밖에는 캘린더 앱을 연다
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first, url.scheme == "oneline" else { return }
+        if url.host == "new" {
+            panelController.show()
+        } else if let calendarApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
+            NSWorkspace.shared.openApplication(at: calendarApp, configuration: .init())
+        }
     }
 
     func togglePanel() {
