@@ -92,7 +92,7 @@ enum KoreanDateParser {
 
         // 5) 날짜 읽기
         var dayIsBareWeekday = false
-        let particle = #"(?:에|까지|부터)?"#
+        let particle = Self.particle
         let weekdays = "(월|화|수|목|금|토|일)"
 
         if day != nil {
@@ -188,9 +188,18 @@ enum KoreanDateParser {
             endDay = nil
         }
 
-        let title = rest.split(whereSeparator: { $0 == " " || $0 == "\t" }).joined(separator: " ")
+        var words = rest.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+        let leftovers: Set = ["까지", "까지만", "까지는", "부터", "에", "에는", "에서"]
+        while let first = words.first, leftovers.contains(first) { words.removeFirst() }
+        while let last = words.last, leftovers.contains(last) { words.removeLast() }
+        let title = words.joined(separator: " ")
         return ParsedInput(title: title, day: day, start: start, end: end, endDay: endDay, recurrence: recurrence)
     }
+
+    // 날짜 뒤에 붙는 말: "까지", "까지만", "부터", "에", "에는" (띄어 써도 된다)
+    // 바로 뒤에 다른 글자가 붙으면 조사가 아니다 ("내일 에어컨 청소"의 "에"는 그대로 둔다)
+    private static let particle = #"(?:\s*(?:까지(?:만|는)?|부터|에(?:는|서)?)(?=\s|$))?"#
+    private static let untilWord = #"\s*까지(?:만|는)?(?=\s|$)"#
 
     // MARK: - 반복 해석
 
@@ -240,20 +249,20 @@ enum KoreanDateParser {
         guard var r = recurrence else { return nil }
 
         // 언제까지 반복할지
-        if let m = find(#"(?<!\d)(\d{1,2})월\s*(\d{1,2})일\s*까지"#, in: rest)
-            ?? find(#"(?<![\d/])(\d{1,2})/(\d{1,2})\s*까지"#, in: rest),
+        if let m = find(#"(?<!\d)(\d{1,2})월\s*(\d{1,2})일"# + untilWord, in: rest)
+            ?? find(#"(?<![\d/])(\d{1,2})/(\d{1,2})"# + untilWord, in: rest),
            let month = Int(m.groups[1] ?? ""), let d = Int(m.groups[2] ?? ""),
            let date = monthDay(month, d, today: today, calendar: calendar) {
             r.until = endOfDay(date, calendar: calendar)
             cut(&rest, m.range)
-        } else if let m = find(#"(?<!\d)(\d{1,2})월\s*(?:말\s*)?까지"#, in: rest),
+        } else if let m = find(#"(?<!\d)(\d{1,2})월\s*(?:말\s*)?"# + untilWord, in: rest),
                   let month = Int(m.groups[1] ?? ""),
                   let first = monthDay(month, 1, today: calendar.date(byAdding: .month, value: -1, to: today) ?? today, calendar: calendar),
                   let last = calendar.date(byAdding: DateComponents(month: 1, day: -1), to: first) {
             // "12월까지" → 12월 마지막 날
             r.until = endOfDay(last, calendar: calendar)
             cut(&rest, m.range)
-        } else if let m = find(#"(?:올해|연말|올\s*연말)\s*까지"#, in: rest),
+        } else if let m = find(#"(?:올해|연말|올\s*연말)"# + untilWord, in: rest),
                   let last = calendar.date(from: DateComponents(year: calendar.component(.year, from: today), month: 12, day: 31)) {
             r.until = endOfDay(last, calendar: calendar)
             cut(&rest, m.range)
@@ -286,7 +295,7 @@ enum KoreanDateParser {
         let notLength = #"(?!\s*(?:간|동안|뒤|후|마다))"#
 
         // "11월 20일~22일", "20일~22일", "11월 30일부터 12월 2일까지"
-        if let m = find(#"(?<!\d)(?:(\d{1,2})월\s*)?(\d{1,2})일"# + to + #"(?:(\d{1,2})월\s*)?(\d{1,2})일"# + notLength + #"(?:\s*까지)?"#, in: rest),
+        if let m = find(#"(?<!\d)(?:(\d{1,2})월\s*)?(\d{1,2})일"# + to + #"(?:(\d{1,2})월\s*)?(\d{1,2})일"# + notLength + #"(?:\s*까지(?:만|는)?)?"#, in: rest),
            let d1 = Int(m.groups[2] ?? ""), let d2 = Int(m.groups[4] ?? "") {
             let first: Date? = if let mo = Int(m.groups[1] ?? "") {
                 monthDay(mo, d1, today: today, calendar: calendar)
@@ -300,7 +309,7 @@ enum KoreanDateParser {
         }
 
         // "12/24~12/26", "12/24~26"
-        if let m = find(#"(?<![\d/])(\d{1,2})/(\d{1,2})\s*(?:~|-|–)\s*(?:(\d{1,2})/)?(\d{1,2})(?![\d/])(?:\s*까지)?"#, in: rest),
+        if let m = find(#"(?<![\d/])(\d{1,2})/(\d{1,2})\s*(?:~|-|–)\s*(?:(\d{1,2})/)?(\d{1,2})(?![\d/])(?:\s*까지(?:만|는)?)?"#, in: rest),
            let mo = Int(m.groups[1] ?? ""), let d1 = Int(m.groups[2] ?? ""), let d2 = Int(m.groups[4] ?? ""),
            let first = monthDay(mo, d1, today: today, calendar: calendar),
            let last = periodEnd(first: first, month: Int(m.groups[3] ?? ""), day: d2, calendar: calendar) {
@@ -309,7 +318,7 @@ enum KoreanDateParser {
         }
 
         // "금~일", "다음주 월~수"
-        if let m = find(#"(?:(이번\s*주|다음\s*주|담주|다다음\s*주)\s*)?(?<![가-힣])([월화수목금토일])(?:요일|욜)?"# + to + #"([월화수목금토일])(?:요일|욜)?(?:\s*까지)?(?=\s|$)"#, in: rest),
+        if let m = find(#"(?:(이번\s*주|다음\s*주|담주|다다음\s*주)\s*)?(?<![가-힣])([월화수목금토일])(?:요일|욜)?"# + to + #"([월화수목금토일])(?:요일|욜)?(?:\s*까지(?:만|는)?)?(?=\s|$)"#, in: rest),
            let w1 = weekdayNumber(m.groups[2]), let w2 = weekdayNumber(m.groups[3]) {
             let first: Date?
             if m.groups[1] != nil {
