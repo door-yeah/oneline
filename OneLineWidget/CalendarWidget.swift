@@ -32,7 +32,9 @@ struct CalendarWidgetView: View {
                 Image(systemName: "calendar")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                Text("한줄 입력 앱을 켜면\n일정이 여기에 보여요")
+                Text(AppGroup.isAvailable
+                     ? "한줄 입력 앱을 켜면\n일정이 여기에 보여요"
+                     : "다운로드판에서는 위젯에 일정이 나오지 않아요.\n직접 빌드하면 쓸 수 있어요 (README 참고)")
                     .font(.callout)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)

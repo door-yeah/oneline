@@ -38,7 +38,8 @@ final class WidgetSync {
     }
 
     func writeNow() {
-        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
+        guard AppGroup.isAvailable,
+              EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return }
         let calendar = Calendar.current
         let thisMonth = calendar.dateInterval(of: .month, for: .now)?.start ?? .now
         guard let from = calendar.date(byAdding: .month, value: -1, to: thisMonth),
